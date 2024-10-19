@@ -26,17 +26,16 @@ public class UltimateInventory extends JavaPlugin {
 
         PluginManager pm = getServer().getPluginManager();
 
-        config.addDefault("enableShulkerbox", true);
-        config.addDefault("enableEnderChest", true);
-        config.addDefault("enableCraftingTable", true);
-        if (isPaper)
-        {
-            config.addDefault("enableSmithingTable", true);
-            config.addDefault("enableStoneCutter", true);
-            config.addDefault("enableGrindstone", true);
-            config.addDefault("enableCartographyTable", true);
-            config.addDefault("enableLoom", true);
-            config.addDefault("enableAnvil", false);
+        addItemConfig("shulkerbox", true, false, "");
+        addItemConfig("enderChest", true, false, "");
+        addItemConfig("craftingTable", true, false, "");
+        if (isPaper) {
+            addItemConfig("smithingTable", true, false, "");
+            addItemConfig("stoneCutter", true, false, "");
+            addItemConfig("grindstone", true, false, "");
+            addItemConfig("cartographyTable", true, false, "");
+            addItemConfig("loom", true, false, "");
+            addItemConfig("anvil", false, false, "");
         }
         config.addDefault("usePermissions", false);
 
@@ -44,10 +43,15 @@ public class UltimateInventory extends JavaPlugin {
         saveConfig();
 
         pm.registerEvents(new InventoryListener(this, config, isPaper), this);
-        if (pm.getPlugin("ChestSort") != null)
-        {
+        if (pm.getPlugin("ChestSort") != null) {
             pm.registerEvents(new ChestSortListener(this), this);
             this.getLogger().info("ChestSort detected, enabling compatibility support");
         }
+    }
+
+    private void addItemConfig(String itemName, boolean enable, boolean override, String command) {
+        config.addDefault(itemName + ".enable", enable);
+        config.addDefault(itemName + ".override", override);
+        config.addDefault(itemName + ".command", command);
     }
 }
