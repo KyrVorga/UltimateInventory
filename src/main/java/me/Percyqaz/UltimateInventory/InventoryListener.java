@@ -287,11 +287,9 @@ public class InventoryListener implements Listener
     }
 
     private void CloseShulkerbox(HumanEntity player) {
-        plugin.getLogger().info("Closing shulker box for player: " + player.getName());
 
         ItemStack shulkerItem = openShulkerBoxes.get(player.getUniqueId());
         if (shulkerItem == null) {
-            plugin.getLogger().warning("No shulker item found for player: " + player.getName());
             return;
         }
 
@@ -304,7 +302,6 @@ public class InventoryListener implements Listener
         NamespacedKey nbtKey = new NamespacedKey(plugin, "__shulkerbox_plugin");
         if (data.has(nbtKey, PersistentDataType.STRING)) {
             data.remove(nbtKey);
-            plugin.getLogger().info("Removed NBT locking for shulker box");
         }
 
         meta.setBlockState(shulkerbox);
@@ -313,18 +310,14 @@ public class InventoryListener implements Listener
         // Get the stored chest ID
         String chestId = playerChestIds.get(player.getUniqueId());
         if (chestId == null) {
-            plugin.getLogger().warning("No chest ID found for player: " + player.getName());
             return;
         }
 
         // Get the stored slot information
         Integer slot = shulkerBoxSlots.get(player.getUniqueId());
         if (slot == null) {
-            plugin.getLogger().warning("No slot information found for player: " + player.getName());
             return;
         }
-
-        plugin.getLogger().info("ChestID: " + chestId + ", Slot: " + slot);
 
         // Check if the inventory is an AEC virtual chest
         Boolean isAec = isAecVirtualChest.get(player.getUniqueId());
@@ -332,7 +325,6 @@ public class InventoryListener implements Listener
             // Retrieve the existing chest data asynchronously
             EnderchestManager.getItemsByChestID(player.getUniqueId(), chestId, existingContents -> {
                 if (existingContents == null) {
-                    plugin.getLogger().warning("No existing contents found for chest ID: " + chestId);
                     return;
                 }
                 existingContents[slot] = shulkerItem;
@@ -347,7 +339,6 @@ public class InventoryListener implements Listener
         openShulkerBoxes.remove(player.getUniqueId());
         shulkerBoxSlots.remove(player.getUniqueId()); // Remove the slot information
         isAecVirtualChest.remove(player.getUniqueId()); // Remove the flag
-        plugin.getLogger().info("Removed shulker box from openShulkerBoxes for player: " + player.getName());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
