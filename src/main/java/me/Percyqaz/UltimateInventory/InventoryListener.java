@@ -1,7 +1,9 @@
 package me.Percyqaz.UltimateInventory;
 
 import java.util.*;
-
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import net.kyori.adventure.text.Component;
 import org.bukkit.*;
 import org.bukkit.block.ShulkerBox;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -17,7 +19,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.*;
 import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.ItemMeta;
-
+import de.chriis.advancedenderchest.manager.EnderchestManager;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
@@ -26,7 +28,9 @@ public class InventoryListener implements Listener
     UltimateInventory plugin;
     FileConfiguration config;
     boolean isPaper;
+    boolean isAdvancedEnderchestPresent;
     Map<UUID, ItemStack> openShulkerBoxes = new HashMap<>();
+    Map<UUID, Map.Entry<String, Integer>> playerAdvancedChests = new HashMap<>(); // Map to store chest IDs
 
     boolean enableShulkerbox;
     boolean overrideShulkerbox;
@@ -66,10 +70,11 @@ public class InventoryListener implements Listener
 
     boolean usePermissions;
 
-    public InventoryListener(UltimateInventory plugin, FileConfiguration config, boolean isPaper) {
+    public InventoryListener(UltimateInventory plugin, FileConfiguration config, boolean isPaper, boolean isAdvancedEnderchestPresent) {
         this.config = config;
         this.plugin = plugin;
         this.isPaper = isPaper;
+        this.isAdvancedEnderchestPresent = isAdvancedEnderchestPresent;
 
         enableShulkerbox = config.getBoolean("shulkerbox.enable", true);
         overrideShulkerbox = config.getBoolean("shulkerbox.override", false);
@@ -284,7 +289,12 @@ public class InventoryListener implements Listener
         ItemStack shulkerItem = openShulkerBoxes.get(player.getUniqueId());
         BlockStateMeta meta = (BlockStateMeta)shulkerItem.getItemMeta();
         ShulkerBox shulkerbox = (ShulkerBox)meta.getBlockState();
+
+        // Update the shulker box inventory
         shulkerbox.getInventory().setContents(player.getOpenInventory().getTopInventory().getContents());
+
+        // Apply the updated block state back to the meta, see: https://jd.papermc.io/paper/1.21.3/org/bukkit/inventory/meta/BlockStateMeta.html#setBlockState(org.bukkit.block.BlockState)
+        meta.setBlockState(shulkerbox);
 
         // Delete NBT for "locking" to prevent stacking shulker boxes
         PersistentDataContainer data = meta.getPersistentDataContainer();
@@ -294,8 +304,25 @@ public class InventoryListener implements Listener
             data.remove(nbtKey);
         }
 
-        meta.setBlockState(shulkerbox);
+        // Apply the updated meta to the item
         shulkerItem.setItemMeta(meta);
+
+        // If AdvancedEnderchests is present check if the player was previously using an AdvancedEnderchest
+        if (isAdvancedEnderchestPresent && playerAdvancedChests.containsKey(player.getUniqueId())) {
+            Map.Entry<String, Integer> chestEntry = playerAdvancedChests.get(player.getUniqueId());
+            if (chestEntry != null) {
+                String chestId = chestEntry.getKey();
+                int slot = chestEntry.getValue();
+                playerAdvancedChests.remove(player.getUniqueId()); // Remove the chest ID
+
+                // Get the old chest data
+                EnderchestManager.getItemsByChestID(player.getUniqueId(), chestId, (ItemStack[] itemStacks) -> {
+                    // Update the chest data
+                    itemStacks[slot] = shulkerItem;
+                    EnderchestManager.saveEnderchest(player.getUniqueId(), chestId, itemStacks);
+                });
+            }
+        }
 
         Bukkit.getServer().getPlayer(player.getUniqueId()).playSound(player, Sound.BLOCK_SHULKER_BOX_CLOSE, SoundCategory.BLOCKS, 1.0f, 1.2f);
 
@@ -320,7 +347,17 @@ public class InventoryListener implements Listener
 
         InventoryType clickedInventory = e.getClickedInventory().getType();
         if (!(clickedInventory == InventoryType.PLAYER || clickedInventory == InventoryType.ENDER_CHEST || clickedInventory == InventoryType.SHULKER_BOX)) {
-            return;
+            // Check if the inventory is a virtual chest from AdvancedEnderchests
+            if (clickedInventory == InventoryType.CHEST && isAdvancedEnderchestPresent) {
+                Component inventoryTitle = e.getView().title();
+
+                // Check if the title is an AdvancedEnderchest
+                if (!inventoryTitle.toString().contains("AEC Multi-EC")) {
+                    return;
+                }
+            } else {
+                return;
+            }
         }
 
         ItemStack item = e.getCurrentItem();
@@ -335,6 +372,23 @@ public class InventoryListener implements Listener
             if (overrideShulkerbox) {
                 executeCommand((Player) player, commandShulkerbox);
             } else {
+
+                // Check if the player was previously using an AdvancedEnderchest
+                Component inventoryTitle = e.getView().title();
+
+                // Check if the title is an AdvancedEnderchest
+                if (inventoryTitle.toString().contains("AEC Multi-EC") && isAdvancedEnderchestPresent) {
+                    Pattern pattern = Pattern.compile("Chest\\s+(\\d+)");
+                    Matcher matcher = pattern.matcher(inventoryTitle.toString());
+
+                    if (matcher.find()) {
+                        String chestNumber = matcher.group(1);
+                        String chestId = "aec.multi.chest." + chestNumber;
+                        Map.Entry<String, Integer> chestEntry = new AbstractMap.SimpleEntry<>(chestId, e.getRawSlot());
+                        playerAdvancedChests.put(player.getUniqueId(), chestEntry); // Store the chest data
+                    }
+                }
+
                 Bukkit.getServer().getScheduler().scheduleSyncDelayedTask(plugin, () -> OpenShulkerbox(player, item));
             }
             e.setCancelled(true);

@@ -42,11 +42,18 @@ public class UltimateInventory extends JavaPlugin {
         config.options().copyDefaults(true);
         saveConfig();
 
-        pm.registerEvents(new InventoryListener(this, config, isPaper), this);
         if (pm.getPlugin("ChestSort") != null) {
             pm.registerEvents(new ChestSortListener(this), this);
             this.getLogger().info("ChestSort detected, enabling compatibility support");
         }
+
+        boolean isAdvancedEnderchestPresent = pm.getPlugin("AdvancedEnderchest") != null;
+        if (isAdvancedEnderchestPresent) {
+            this.getLogger().info("AdvancedEnderchest plugin found, enabling related features.");
+        }
+
+        pm.registerEvents(new InventoryListener(this, config, isPaper, isAdvancedEnderchestPresent), this);
+
     }
 
     private void addItemConfig(String itemName, boolean enable, boolean override, String command) {
