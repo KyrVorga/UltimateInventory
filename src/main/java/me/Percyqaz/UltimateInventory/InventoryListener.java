@@ -1,8 +1,6 @@
 package me.Percyqaz.UltimateInventory;
 
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.bukkit.*;
 import org.bukkit.block.ShulkerBox;
@@ -19,7 +17,6 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.*;
 import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.ItemMeta;
-import de.chriis.advancedenderchest.manager.EnderchestManager;
 
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
@@ -30,10 +27,6 @@ public class InventoryListener implements Listener
     FileConfiguration config;
     boolean isPaper;
     Map<UUID, ItemStack> openShulkerBoxes = new HashMap<>();
-    Map<UUID, String> playerChestIds = new HashMap<>(); // Map to store chest IDs
-    Map<UUID, Integer> shulkerBoxSlots = new HashMap<>();
-    Map<UUID, Boolean> isAecVirtualChest = new HashMap<>();
-
 
     boolean enableShulkerbox;
     boolean overrideShulkerbox;
@@ -286,62 +279,30 @@ public class InventoryListener implements Listener
         openShulkerBoxes.put(player.getUniqueId(), shulkerItem);
     }
 
-    private void CloseShulkerbox(HumanEntity player) {
-
+    private void CloseShulkerbox(HumanEntity player)
+    {
         ItemStack shulkerItem = openShulkerBoxes.get(player.getUniqueId());
-        if (shulkerItem == null) {
-            return;
-        }
-
-        BlockStateMeta meta = (BlockStateMeta) shulkerItem.getItemMeta();
-        ShulkerBox shulkerbox = (ShulkerBox) meta.getBlockState();
+        BlockStateMeta meta = (BlockStateMeta)shulkerItem.getItemMeta();
+        ShulkerBox shulkerbox = (ShulkerBox)meta.getBlockState();
         shulkerbox.getInventory().setContents(player.getOpenInventory().getTopInventory().getContents());
 
         // Delete NBT for "locking" to prevent stacking shulker boxes
         PersistentDataContainer data = meta.getPersistentDataContainer();
         NamespacedKey nbtKey = new NamespacedKey(plugin, "__shulkerbox_plugin");
-        if (data.has(nbtKey, PersistentDataType.STRING)) {
+        if(data.has(nbtKey, PersistentDataType.STRING))
+        {
             data.remove(nbtKey);
         }
 
         meta.setBlockState(shulkerbox);
         shulkerItem.setItemMeta(meta);
 
-        // Get the stored chest ID
-        String chestId = playerChestIds.get(player.getUniqueId());
-        if (chestId == null) {
-            return;
-        }
-
-        // Get the stored slot information
-        Integer slot = shulkerBoxSlots.get(player.getUniqueId());
-        if (slot == null) {
-            return;
-        }
-
-        // Check if the inventory is an AEC virtual chest
-        Boolean isAec = isAecVirtualChest.get(player.getUniqueId());
-        if (isAec != null && isAec) {
-            // Retrieve the existing chest data asynchronously
-            EnderchestManager.getItemsByChestID(player.getUniqueId(), chestId, existingContents -> {
-                if (existingContents == null) {
-                    return;
-                }
-                existingContents[slot] = shulkerItem;
-
-                // Save the updated chest data
-                EnderchestManager.saveEnderchest(player.getUniqueId(), chestId, existingContents);
-            });
-        }
-
         Bukkit.getServer().getPlayer(player.getUniqueId()).playSound(player, Sound.BLOCK_SHULKER_BOX_CLOSE, SoundCategory.BLOCKS, 1.0f, 1.2f);
 
         openShulkerBoxes.remove(player.getUniqueId());
-        shulkerBoxSlots.remove(player.getUniqueId()); // Remove the slot information
-        isAecVirtualChest.remove(player.getUniqueId()); // Remove the flag
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.LOW)
     public void InventoryClick(InventoryClickEvent e) {
         if (e.getAction() == InventoryAction.NOTHING) {
             return;
@@ -358,29 +319,8 @@ public class InventoryListener implements Listener
         }
 
         InventoryType clickedInventory = e.getClickedInventory().getType();
-
         if (!(clickedInventory == InventoryType.PLAYER || clickedInventory == InventoryType.ENDER_CHEST || clickedInventory == InventoryType.SHULKER_BOX)) {
-            // Check if the inventory is a virtual chest from AdvancedEnderchests
-            if (clickedInventory == InventoryType.CHEST) {
-                String inventoryTitle = e.getView().getTitle();
-
-                if (inventoryTitle.startsWith("§5§lAEC Multi-EC")) {
-                    // Extract the chest ID from the title using regex
-                    Pattern pattern = Pattern.compile("Chest\\s+(\\d+)");
-                    Matcher matcher = pattern.matcher(inventoryTitle);
-
-                    if (matcher.find()) {
-                        String chestNumber = matcher.group(1);
-                        String chestId = "aec.multi.chest." + chestNumber;
-                        playerChestIds.put(e.getWhoClicked().getUniqueId(), chestId); // Store the chest ID
-                        isAecVirtualChest.put(e.getWhoClicked().getUniqueId(), true); // Set the flag
-                    }
-                } else {
-                    return;
-                }
-            } else {
-                return;
-            }
+            return;
         }
 
         ItemStack item = e.getCurrentItem();
@@ -395,8 +335,6 @@ public class InventoryListener implements Listener
             if (overrideShulkerbox) {
                 executeCommand((Player) player, commandShulkerbox);
             } else {
-                // Save the slot information
-                shulkerBoxSlots.put(player.getUniqueId(), e.getSlot());
                 Bukkit.getServer().getScheduler().scheduleSyncDelayedTask(plugin, () -> OpenShulkerbox(player, item));
             }
             e.setCancelled(true);
