@@ -31,6 +31,8 @@ public class InventoryListener implements Listener
     boolean isAdvancedEnderchestPresent;
     Map<UUID, ItemStack> openShulkerBoxes = new HashMap<>();
     Map<UUID, Map.Entry<String, Integer>> playerAdvancedChests = new HashMap<>(); // Map to store chest IDs
+    Map<UUID, Boolean> playerOpenedShulker = new HashMap<>(); // Map to store if player opened a shulker box
+    Map<UUID, String> playerLastOpenedMenu = new HashMap<>();
 
     boolean enableShulkerbox;
     boolean overrideShulkerbox;
@@ -313,7 +315,6 @@ public class InventoryListener implements Listener
             if (chestEntry != null) {
                 String chestId = chestEntry.getKey();
                 int slot = chestEntry.getValue();
-                playerAdvancedChests.remove(player.getUniqueId()); // Remove the chest ID
 
                 // Get the old chest data
                 EnderchestManager.getItemsByChestID(player.getUniqueId(), chestId, (ItemStack[] itemStacks) -> {
@@ -369,6 +370,8 @@ public class InventoryListener implements Listener
         HumanEntity player = e.getWhoClicked();
 
         if (clickedInventory != InventoryType.SHULKER_BOX && IsShulkerBox(itemType) && enableShulkerbox && (!usePermissions || player.hasPermission("ultimateinventory.shulkerbox"))) {
+            playerOpenedShulker.put(player.getUniqueId(), true);
+
             if (overrideShulkerbox) {
                 executeCommand((Player) player, commandShulkerbox);
             } else {
@@ -384,8 +387,11 @@ public class InventoryListener implements Listener
                     if (matcher.find()) {
                         String chestNumber = matcher.group(1);
                         String chestId = "aec.multi.chest." + chestNumber;
-                        Map.Entry<String, Integer> chestEntry = new AbstractMap.SimpleEntry<>(chestId, e.getRawSlot());
-                        playerAdvancedChests.put(player.getUniqueId(), chestEntry); // Store the chest data
+                        int slot = e.getRawSlot();
+                        if (slot > 0 && slot <= 54) {
+                            Map.Entry<String, Integer> chestEntry = new AbstractMap.SimpleEntry<>(chestId, e.getRawSlot());
+                            playerAdvancedChests.put(player.getUniqueId(), chestEntry); // Store the chest data
+                        }
                     }
                 }
 
@@ -564,11 +570,87 @@ public class InventoryListener implements Listener
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void InventoryClose(InventoryCloseEvent e)
-    {
-        if (openShulkerBoxes.containsKey(e.getPlayer().getUniqueId()))
-        {
+    public void InventoryClose(InventoryCloseEvent e) {
+        this.plugin.getLogger().info("Inventory Close Event");
+
+        // If closed inventory is a shulker box
+        if (openShulkerBoxes.containsKey(e.getPlayer().getUniqueId())) {
+            this.plugin.getLogger().info("Closing Shulkerbox");
             CloseShulkerbox(e.getPlayer());
+
+            // If AEC present, and player was using a vanilla Enderchest, reopen it
+            if (isAdvancedEnderchestPresent && playerLastOpenedMenu.get(e.getPlayer().getUniqueId()).contains("Ender Chest")) {
+                if (!playerOpenedShulker.containsKey(e.getPlayer().getUniqueId())) {
+                    this.plugin.getLogger().info("Reopening Enderchest");
+
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        e.getPlayer().openInventory(e.getPlayer().getEnderChest());
+                    }, 1L);
+                }
+            }
+            // If AEC present and player was using an AdvancedEnderchest
+            else if (isAdvancedEnderchestPresent && playerAdvancedChests.containsKey(e.getPlayer().getUniqueId())) {
+                if (!playerOpenedShulker.containsKey(e.getPlayer().getUniqueId())) {
+                    this.plugin.getLogger().info("Reopening Enderchest");
+                    Map.Entry<String, Integer> chestEntry = playerAdvancedChests.get(e.getPlayer().getUniqueId());
+                    String chestId = chestEntry.getKey();
+
+                    // Remove the player from the map
+                    playerAdvancedChests.remove(e.getPlayer().getUniqueId());
+
+                    // Clear opened AdvancedEnderchests
+                    EnderchestManager.OPENED_ENDERCHESTS.remove((Player) e.getPlayer());
+
+                    // Pop the number from the end of the chest ID
+                    String[] chestIdParts = chestId.split("\\.");
+                    String chestNumber = chestIdParts[chestIdParts.length - 1];
+                    String chestName = "Chest " + chestNumber;
+
+                    if (!playerOpenedShulker.containsKey(e.getPlayer().getUniqueId())) {
+                        this.plugin.getLogger().info("Reopening AdvancedEnderchest");
+
+                        // Reopen the advanced enderchest after a short delay
+                        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                            EnderchestManager.openEnderchest((Player) e.getPlayer(), "&r&5" + chestName, chestId, 54);
+                        }, 3L);
+                    }
+                }
+            }
+            playerOpenedShulker.remove(e.getPlayer().getUniqueId());
+        }
+        // if the closed inventory was the AEC menu clear last opened menu
+        else if (isAdvancedEnderchestPresent && Objects.equals(e.getPlayer().getOpenInventory().title().toString(), "AEC Multi-Enderchest Menu")) {
+            this.plugin.getLogger().info("Clearing last opened menu");
+            playerLastOpenedMenu.remove(e.getPlayer().getUniqueId());
+            return;
+        }
+        // else if the closed inventory is an AdvancedEnderchest
+        else if (isAdvancedEnderchestPresent && e.getPlayer().getOpenInventory().title().toString().contains("AEC Multi-EC")) {
+            if (!playerOpenedShulker.containsKey(e.getPlayer().getUniqueId())) {
+                this.plugin.getLogger().info("Opening AEC Menu");
+
+                // Open the AdvancedEnderchest menu after a short delay
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    EnderchestManager.openEnderchest((Player) e.getPlayer());
+                }, 1L);
+            }
+        }
+        // else if the closed inventory is an Enderchest
+        else if (isAdvancedEnderchestPresent && e.getInventory().getType() == InventoryType.ENDER_CHEST) {
+            if (!playerOpenedShulker.containsKey(e.getPlayer().getUniqueId())) {
+                this.plugin.getLogger().info("Opening AEC Menu");
+
+                // Open the AdvancedEnderchest menu after a short delay
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    EnderchestManager.openEnderchest((Player) e.getPlayer());
+                }, 1L);
+            }
+        }
+
+        if (e.getPlayer().getOpenInventory().getType() != InventoryType.SHULKER_BOX)
+        {
+            this.plugin.getLogger().info("Updating last opened menu");
+            playerLastOpenedMenu.put(e.getPlayer().getUniqueId(), e.getView().title().toString());
         }
     }
 
